@@ -1,16 +1,51 @@
 package org.orderpulse.orderpulsebackend.entity;
 
 /**
- * Enumeration of possible order statuses in the system.
- * Using an enum ensures type safety and provides a clear set of valid states.
+ * Enumeration representing the various states an order can be in throughout its
+ * lifecycle.
+ * 
+ * This enum is used to track order progression from creation to completion or
+ * cancellation.
+ * Each status represents a distinct stage in the order fulfillment process.
+ * 
+ * @author OrderPulse Team
+ * @version 1.0
  */
 public enum OrderStatus {
-    PENDING,         // Initial status when order is first created
-    CONFIRMED,       // Order has been validated and confirmed
-    PREPARING,       // Kitchen/System is preparing the order
-    READY,           // Order is ready for delivery/pickup
-    IN_TRANSIT,      // Order is being delivered
-    DELIVERED,       // Order has been successfully delivered
-    CANCELLED,       // Order was cancelled
-    REFUNDED         // Order was refunded
+
+    /**
+     * Initial state when an order is created but not yet confirmed.
+     * The order is awaiting payment or initial validation.
+     */
+    PENDING,
+
+    /**
+     * Order has been confirmed and payment has been received.
+     * The order is ready to be processed for fulfillment.
+     */
+    CONFIRMED,
+
+    /**
+     * Order is currently being prepared or assembled.
+     * Items are being picked, packed, or manufactured.
+     */
+    PROCESSING,
+
+    /**
+     * Order has been dispatched and is in transit to the customer.
+     * Tracking information should be available at this stage.
+     */
+    SHIPPED,
+
+    /**
+     * Order has been successfully delivered to the customer.
+     * This is a terminal state for successful orders.
+     */
+    DELIVERED,
+
+    /**
+     * Order has been cancelled by the customer or system.
+     * This is a terminal state. Refund processing may be initiated.
+     */
+    CANCELLED
 }
