@@ -4,44 +4,87 @@ import org.orderpulse.orderpulsebackend.entity.Order;
 import org.orderpulse.orderpulsebackend.entity.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Repository interface for Order entity.
- * Extends JpaRepository to inherit basic CRUD operations and pagination support.
- *
- * Spring Data JPA will automatically implement this interface at runtime,
- * creating the necessary database queries based on method names.
+ * Repository interface for Order entity database operations.
+ * 
+ * Extends JpaRepository to provide:
+ * - Basic CRUD operations (save, findById, findAll, delete, etc.)
+ * - Pagination and sorting capabilities
+ * - Custom query methods using Spring Data JPA conventions
+ * 
+ * @author OrderPulse Team
+ * @version 1.0
  */
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     /**
-     * Find orders by customer name (case-insensitive partial match)
+     * Find all orders for a specific customer.
+     * Case-insensitive search using JPQL.
+     * 
+     * @param customerName the customer name to search for
+     * @return list of orders matching the customer name
      */
-    List<Order> findByCustomerNameContainingIgnoreCase(String customerName);
+    @Query("SELECT o FROM Order o WHERE LOWER(o.customerName) = LOWER(:customerName)")
+    List<Order> findByCustomerNameIgnoreCase(@Param("customerName") String customerName);
 
     /**
-     * Find orders by status
+     * Find all orders with a specific status.
+     * Uses Spring Data JPA method naming convention.
+     * 
+     * @param status the order status to filter by
+     * @return list of orders with the specified status
      */
     List<Order> findByStatus(OrderStatus status);
 
     /**
-     * Find orders by status and creation date range
+     * Find orders by customer email.
+     * Case-insensitive search.
+     * 
+     * @param email the customer email to search for
+     * @return list of orders for the given email
      */
-    List<Order> findByStatusAndCreatedAtBetween(
-        OrderStatus status,
-        LocalDateTime startDate,
-        LocalDateTime endDate
-    );
+    List<Order> findByCustomerEmailIgnoreCase(String email);
 
     /**
-     * Custom query to find orders with specific status and minimum amount
+     * Find orders created within a specific date range.
+     * Useful for reporting and analytics.
+     * 
+     * @param startDate the start of the date range (inclusive)
+     * @param endDate   the end of the date range (inclusive)
+     * @return list of orders created within the date range
      */
-    @Query("SELECT o FROM Order o WHERE o.status = :status AND o.totalAmount >= :minAmount")
-    List<Order> findOrdersByStatusAndMinAmount(OrderStatus status, BigDecimal minAmount);
+    List<Order> findByCreatedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
+
+    /**
+     * Find orders by customer name containing a search term.
+     * Case-insensitive partial match search.
+     * 
+     * @param searchTerm the term to search for in customer names
+     * @return list of orders with matching customer names
+     */
+    List<Order> findByCustomerNameContainingIgnoreCase(String searchTerm);
+
+    /**
+     * Count orders by status.
+     * Useful for dashboard statistics.
+     * 
+     * @param status the order status to count
+     * @return number of orders with the specified status
+     */
+    long countByStatus(OrderStatus status);
+
+    /**
+     * Check if an order exists for a given customer email and status.
+     * 
+     * @param email  the customer email
+     * @param status the order status
+     * @return true if at least one order exists, false otherwise
+     */
+    boolean existsByCustomerEmailAndStatus(String email, OrderStatus status);
 }
