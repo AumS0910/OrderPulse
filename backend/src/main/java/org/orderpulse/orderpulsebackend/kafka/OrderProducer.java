@@ -1,58 +1,102 @@
 package org.orderpulse.orderpulsebackend.kafka;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.orderpulse.orderpulsebackend.entity.Order;
+import java.util.concurrent.CompletableFuture;
+
+import org.orderpulse.orderpulsebackend.config.KafkaConfig;
+import org.orderpulse.orderpulsebackend.dto.OrderEvent;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
- * Kafka Producer for Order events.
- * Responsible for publishing order events to Kafka topics.
- *
- * Uses:
- * - KafkaTemplate for reliable message publishing
- * - ObjectMapper for JSON serialization
- * - Slf4j for logging
+ * Kafka producer service for publishing order events.
+ * 
+ * This service is responsible for sending order-related events to Kafka topics.
+ * It provides asynchronous message publishing with callback handling for
+ * success and failure.
+ * 
+ * Key Features:
+ * - Asynchronous publishing for non-blocking operations
+ * - Success and failure callbacks for monitoring
+ * - Automatic JSON serialization of events
+ * - Logging for debugging and audit trails
+ * 
+ * @author OrderPulse Team
+ * @version 1.0
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OrderProducer {
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final ObjectMapper objectMapper;
+    /**
+     * KafkaTemplate for sending messages to Kafka.
+     * Configured with String key and OrderEvent value serialization.
+     * Injected by Sppring's dependency injection.
+     */
+    private final KafkaTemplate<String, OrderEvent> kafkaTemplate;
 
     /**
-     * Publishes an order event to Kafka.
-     * Serializes the order to JSON and sends it to the order-events topic.
-     *
-     * @param order The order to publish
-     * @param eventType The type of event (CREATE, UPDATE, etc.)
+     * Publishes an order event to the Kafka topic.
+     * 
+     * The method sends the event asynchronously and registers callbacks to handle
+     * the result. This ensures the calling thread is not blocked while waiting
+     * for Kafka acknowledgement.
+     * 
+     * @param event the order event to publish
      */
-    public void publishOrderEvent(Order order, String eventType) {
-        try {
-            // Create an event object with metadata
-            OrderEvent event = OrderEvent.builder()
-                .orderId(order.getId())
-                .eventType(eventType)
-                .orderData(order)
-                .timestamp(LocalDateTime.now())
-                .build();
+    public void publishOrderEvent(OrderEvent event) {
+        log.info("Publishing order event: {} for order ID: {}", event.getEventType(), event.getOrder().getId());
 
-            // Convert to JSON
-            String eventJson = objectMapper.writeValueAsString(event);
+        // Send message asynchronously to Kafka topic
+        // Key: order ID (ensures all events for same order go to same)
+        // Value: the complete order event
+        CompletableFuture<SendResult<String, OrderEvent>> future = kafkaTemplate.send(KafkaConfig.ORDER_TOPIC,
+                String.valueOf(event.getOrder().getId()), event);
 
-            // Publish to Kafka
-            kafkaTemplate.send("order-events", String.valueOf(order.getId()), eventJson);
-            
-            log.info("Published {} event for order ID: {}", eventType, order.getId());
-        } catch (Exception e) {
-            log.error("Failed to publish order event: {}", e.getMessage(), e);
-            throw new OrderEventPublishException("Failed to publish order event", e);
-        }
+        // Register success callback
+        future.whenComplete((result, ex) -> {
+            if (ex == null) {
+                // Message sent successfully
+                log.info("Order event published successfully: {} - Partition: {}, offset: {}", event.getEventType(),
+                        result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
+
+            } else {
+                // Message sending failed
+                log.error("Failed to publish order event: {} for order ID: {}. Error: {}", event.getEventType(),
+                        event.getOrder().getId(), ex.getMessage(), ex);
+
+                // Inproduction, you might want to:
+                // 1. Retry sending the message
+                // 2. Send to a dead letter queue
+                // 3. Alert monitoring systems
+                // 4. Store in a database for manual reprocessing
+            }
+
+        });
+
     }
+
+    /**
+     * Synchronous version of publishOrderEvent for cases where you need to wait
+     * for confirmation before proceeding.
+     * 
+     * Use sparingly as it blocks the calling thread.
+     * 
+     * @param event the order event to publish
+     * @throws Exception if publishing fails
+     */
+    public void publishOrderEventSync(OrderEvent event) throws Exception {
+        log.info("Publishing order event synchronously: {}", event.getEventType());
+
+        SendResult<String, OrderEvent> result = kafkaTemplate
+                .send(KafkaConfig.ORDER_TOPIC, String.valueOf(event.getOrder().getId()), event).get();
+
+        log.info("Order event published: Partition: {}, offset: {}", result.getRecordMetadata().partition(),
+                result.getRecordMetadata().offset());
+    }
+
 }
