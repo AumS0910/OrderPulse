@@ -1,6 +1,9 @@
 package org.orderpulse.orderpulsebackend.service.impl;
 
-import lombok.RequiredArgsConstructor;
+import java.util.List;
+
+import org.orderpulse.orderpulsebackend.dto.OrderEvent;
+import org.orderpulse.orderpulsebackend.dto.OrderRequest;
 import org.orderpulse.orderpulsebackend.entity.Order;
 import org.orderpulse.orderpulsebackend.entity.OrderStatus;
 import org.orderpulse.orderpulsebackend.exception.OrderNotFoundException;
@@ -10,123 +13,191 @@ import org.orderpulse.orderpulsebackend.service.OrderService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
- * Implementation of the OrderService interface that handles order management operations.
- * This service implements transaction management and integrates with Kafka for event publishing.
+ * Implementation of OrderService interface.
+ * 
+ * This class contains the core business logic for order management.
+ * It coordinates between the repository layer (data access) and Kafka producer
+ * (events).
+ * 
+ * Key Features:
+ * - Transactional operations for data consistency
+ * - Event publishing for asynchronous processing
+ * - Comprehensive error handling
+ * - Logging for debugging and monitoring
+ * 
+ * @author OrderPulse Team
+ * @version 1.0
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OrderServiceImpl implements OrderService {
 
+    /**
+     * Repository for database operations.
+     * Injected via constructor by Spring.
+     */
     private final OrderRepository orderRepository;
+
+    /**
+     * Kafka producer for publishing events.
+     * Injected via constructor by Spring.
+     */
     private final OrderProducer orderProducer;
 
     /**
-     * Creates a new order and publishes an event to Kafka.
-     * The entire operation is transactional to ensure data consistency.
-     *
-     * @param order The order to be created
-     * @return The persisted order with generated ID and audit fields
+     * Creates a new order and publishes an ORDER_CREATED event.
+     * 
+     * Transaction ensures that both database save and event publishing
+     * are treated as a single atomic operation.
+     * 
+     * @param orderRequest the order data from API
+     * @return the created order with generated ID
      */
     @Override
     @Transactional
-    public Order createOrder(Order order) {
-        // Set initial status if not provided
-        if (order.getStatus() == null) {
-            order.setStatus(OrderStatus.PENDING);
-        }
+    public Order createOrder(OrderRequest orderRequest) {
+        log.info("Creating new order for customer: {}", orderRequest.getCustomerName());
 
-        // Save the order to the database
+        // Build Order entity from DTO
+        Order order = Order.builder()
+                .customerName(orderRequest.getCustomerName())
+                .customerEmail(orderRequest.getCustomerEmail())
+                .productDescription(orderRequest.getProductDescription())
+                .quantity(orderRequest.getQuantity())
+                .totalPrice(orderRequest.getTotalPrice())
+                .status(OrderStatus.PENDING)
+                .build();
+
         Order savedOrder = orderRepository.save(order);
+        log.info("Order created successfully with ID: {}", savedOrder.getId());
 
-        // Publish order created event to Kafka
-        orderProducer.sendMessage(savedOrder);
+        // Publish event Kafka for asynchronous processing
+        // Other services can react to this event (e.g., send email, update inventory)
+        orderProducer.publishOrderEvent(OrderEvent.created((savedOrder)));
 
         return savedOrder;
     }
 
     /**
-     * Retrieves an order by its ID.
-     * Throws OrderNotFoundException if the order doesn't exist.
-     *
-     * @param orderId The ID of the order to retrieve
-     * @return The found order
-     * @throws OrderNotFoundException if no order exists with the given ID
+     * Retrieves an order by ID.
+     * 
+     * @param id the order ID
+     * @return the order
+     * @throws OrderNotFoundException if order doesn't exist
      */
     @Override
     @Transactional(readOnly = true)
-    public Order getOrderById(Long orderId) {
-        return orderRepository.findById(orderId)
-                .orElseThrow(() -> new OrderNotFoundException(orderId));
+    public Order getOrderById(Long id) {
+        log.debug("Fetching order with ID: {}", id);
+
+        return orderRepository.findById(id)
+                .orElseThrow(() -> {
+                    log.error("Order not found with ID: {}", id);
+                    return new OrderNotFoundException(id);
+                });
     }
 
     /**
-     * Updates the status of an existing order and publishes an event to Kafka.
-     * The entire operation is transactional to ensure data consistency.
-     *
-     * @param orderId The ID of the order to update
-     * @param newStatus The new status to set
-     * @return The updated order
-     * @throws OrderNotFoundException if no order exists with the given ID
+     * Retrieves all orders from the database.
+     * 
+     * @return list of all orders
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Order> getAllOrders() {
+        log.debug("Fetching all orders");
+        return orderRepository.findAll();
+    }
+
+    /**
+     * Updates the status of an order and publishes an ORDER_UPDATED event.
+     * 
+     * @param id        the order ID
+     * @param newStatus the new status
+     * @return the updated order
+     * @throws OrderNotFoundException if order doesn't exist
      */
     @Override
     @Transactional
-    public Order updateOrderStatus(Long orderId, OrderStatus newStatus) {
-        Order order = getOrderById(orderId);
+    public Order updateOrderStatus(Long id, OrderStatus newStatus) {
+        log.info("Updating order {} status to {}", id, newStatus);
+
+        // Fetch existing order
+        Order order = getOrderById(id);
+
+        // Store old status for logging
+        OrderStatus oldStatus = order.getStatus();
+
+        // Update status
         order.setStatus(newStatus);
 
-        // Save the updated order
+        // Save changes
         Order updatedOrder = orderRepository.save(order);
+        log.info("Order {} status updated from {} to {}", id, oldStatus, newStatus);
 
-        // Publish order updated event to Kafka
-        orderProducer.sendMessage(updatedOrder);
+        // Publish update event
+        if (newStatus == OrderStatus.CANCELLED) {
+            orderProducer.publishOrderEvent(OrderEvent.cancelled(updatedOrder));
+        } else {
+            orderProducer.publishOrderEvent(OrderEvent.updated((updatedOrder)));
+        }
 
         return updatedOrder;
     }
 
     /**
-     * Retrieves all orders for a specific customer.
-     *
-     * @param customerName The name of the customer
-     * @return List of orders belonging to the customer
+     * Deletes an order by ID.
+     * 
+     * Note: In production, consider soft deletes instead of hard deletes
+     * to maintain audit trails and enable data recovery.
+     * 
+     * @param id the order ID
+     * @throws OrderNotFoundException if order doesn't exist
      */
     @Override
-    @Transactional(readOnly = true)
-    public List<Order> getOrdersByCustomer(String customerName) {
-        return orderRepository.findByCustomerName(customerName);
+    @Transactional
+    public void deleteOrder(Long id) {
+        log.info("Deleting order with ID: {}", id);
+
+        // Verify order exists
+        Order order = getOrderById(id);
+
+        // Delete from database
+        orderRepository.delete(order);
+        log.info("Order {} deleted successfully", id);
+
+        // Optionally publish deletion event
+        // orderProducer.publishOrderEvent(OrderEvent.deleted(order));
     }
 
     /**
-     * Retrieves all orders with a specific status.
-     *
-     * @param status The order status to filter by
-     * @return List of orders with the specified status
+     * Finds all orders for a specific customer.
+     * 
+     * @param customerName the customer name (case-insensitive)
+     * @return list of orders
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Order> getOrdersByCustomerName(String customerName) {
+        log.debug("Fetching orders for customer: {}", customerName);
+        return orderRepository.findByCustomerNameIgnoreCase(customerName);
+    }
+
+    /**
+     * Finds all orders with a specific status.
+     * 
+     * @param status the order status
+     * @return list of orders
      */
     @Override
     @Transactional(readOnly = true)
     public List<Order> getOrdersByStatus(OrderStatus status) {
+        log.debug("Fetching orders with status: {}", status);
         return orderRepository.findByStatus(status);
-    }
-
-    /**
-     * Deletes an order and publishes a deletion event to Kafka.
-     * The entire operation is transactional to ensure data consistency.
-     *
-     * @param orderId The ID of the order to delete
-     * @throws OrderNotFoundException if no order exists with the given ID
-     */
-    @Override
-    @Transactional
-    public void deleteOrder(Long orderId) {
-        // Verify the order exists before deletion
-        Order order = getOrderById(orderId);
-
-        // Delete the order
-        orderRepository.deleteById(orderId);
-
-        // Publish order deleted event to Kafka
-        orderProducer.sendMessage(order);
     }
 }

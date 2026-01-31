@@ -1,68 +1,73 @@
 package org.orderpulse.orderpulsebackend.service;
 
+import org.orderpulse.orderpulsebackend.dto.OrderRequest;
 import org.orderpulse.orderpulsebackend.entity.Order;
 import org.orderpulse.orderpulsebackend.entity.OrderStatus;
-import org.orderpulse.orderpulsebackend.exception.OrderNotFoundException;
-
 import java.util.List;
 
 /**
- * Service interface for managing orders in the OrderPulse system.
- * This interface defines the core business operations for order processing.
+ * Service interface defining business operations for orders.
+ * 
+ * This interface defines the contract for order management operations.
+ * Implementation classes will provide the actual business logic.
+ * 
+ * @author OrderPulse Team
+ * @version 1.0
  */
 public interface OrderService {
 
     /**
-     * Creates a new order in the system.
-     * This operation is transactional and will trigger a Kafka event upon successful creation.
-     *
-     * @param order The order to be created
-     * @return The created order with generated ID and audit fields
+     * Creates a new order.
+     * 
+     * @param orderRequest the order data
+     * @return the created order
      */
-    Order createOrder(Order order);
+    Order createOrder(OrderRequest orderRequest);
 
     /**
-     * Retrieves an order by its unique identifier.
-     *
-     * @param orderId The ID of the order to retrieve
-     * @return The found order
-     * @throws OrderNotFoundException if no order exists with the given ID
+     * Retrieves an order by its ID.
+     * 
+     * @param id the order ID
+     * @return the order
      */
-    Order getOrderById(Long orderId);
+    Order getOrderById(Long id);
 
     /**
-     * Updates the status of an existing order.
-     * This operation is transactional and will trigger a Kafka event upon successful update.
-     *
-     * @param orderId The ID of the order to update
-     * @param newStatus The new status to set
-     * @return The updated order
-     * @throws OrderNotFoundException if no order exists with the given ID
+     * Retrieves all orders.
+     * 
+     * @return list of all orders
      */
-    Order updateOrderStatus(Long orderId, OrderStatus newStatus);
+    List<Order> getAllOrders();
 
     /**
-     * Retrieves all orders for a specific customer.
-     *
-     * @param customerName The name of the customer
-     * @return List of orders belonging to the customer
+     * Updates the status of an order.
+     * 
+     * @param id        the order ID
+     * @param newStatus the new status
+     * @return the updated order
      */
-    List<Order> getOrdersByCustomer(String customerName);
+    Order updateOrderStatus(Long id, OrderStatus newStatus);
 
     /**
-     * Retrieves all orders with a specific status.
-     *
-     * @param status The order status to filter by
-     * @return List of orders with the specified status
+     * Deletes an order.
+     * 
+     * @param id the order ID
+     */
+    void deleteOrder(Long id);
+
+    /**
+     * Finds orders by customer name.
+     * 
+     * @param customerName the customer name
+     * @return list of orders
+     */
+    List<Order> getOrdersByCustomerName(String customerName);
+
+    /**
+     * Finds orders by status.
+     * 
+     * @param status the order status
+     * @return list of orders
      */
     List<Order> getOrdersByStatus(OrderStatus status);
-
-    /**
-     * Deletes an order from the system.
-     * This operation is transactional and will trigger a Kafka event upon successful deletion.
-     *
-     * @param orderId The ID of the order to delete
-     * @throws OrderNotFoundException if no order exists with the given ID
-     */
-    void deleteOrder(Long orderId);
 }
