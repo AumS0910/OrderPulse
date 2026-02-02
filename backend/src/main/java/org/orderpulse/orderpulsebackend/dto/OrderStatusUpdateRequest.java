@@ -1,16 +1,23 @@
 package org.orderpulse.orderpulsebackend.dto;
-
 import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+import lombok.*;
 import org.orderpulse.orderpulsebackend.entity.OrderStatus;
-
 /**
- * DTO for order status update requests.
- * Ensures status is provided for updates.
+ * DTO for updating order status.
+ * 
+ * @author OrderPulse Team
+ * @version 1.0
  */
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class OrderStatusUpdateRequest {
-
-    @NotNull(message = "New status is required")
-    private OrderStatus newStatus;
+    
+    /**
+     * New status for the order.
+     * Required field.
+     */
+    @NotNull(message = "Status is required")
+    private OrderStatus status;
 }
