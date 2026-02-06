@@ -188,16 +188,6 @@ docker-compose -f docker-compose.prod.yml up -d
 4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Open Pull Request
 
-## 📝 License
-
-This project is licensed under the MIT License.
-
-## 👤 Author
-
-**Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
-
 ## 🙏 Acknowledgments
 
 - Spring Boot Team
@@ -207,3 +197,4 @@ This project is licensed under the MIT License.
 ---
 
 ⭐ Star this repo if you find it helpful!
+
