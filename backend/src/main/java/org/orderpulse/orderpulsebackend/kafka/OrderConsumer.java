@@ -6,6 +6,9 @@ import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import org.orderpulse.orderpulsebackend.config.KafkaConfig;
+import org.orderpulse.orderpulsebackend.dto.OrderResponse;
+import org.orderpulse.orderpulsebackend.service.EmailService;
+import org.orderpulse.orderpulsebackend.service.WebSocketNotificationService;
 import org.springframework.messaging.handler.annotation.Header;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +35,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class OrderConsumer {
 
+    private final EmailService emailService;
+    private final WebSocketNotificationService webSocketNotificationService;
+
     /**
      * Listens to order events from Kafka and processes them.
      * 
@@ -50,7 +56,7 @@ public class OrderConsumer {
      * @param partition the partition from which the message was received
      * @param offset    the offset of the message
      */
-    @KafkaListener(topics = KafkaConfig.ORDER_TOPIC, groupId = "${spring.kafka.consumer.group-id}", concurrency = "3" // Number
+    @KafkaListener(topics = KafkaConfig.ORDER_TOPIC, groupId = "${spring.kafka.consumer.group-id}", concurrency = "${kafka.consumer.concurrency:1}" // Number
                                                                                                                       // of
                                                                                                                       // concurrent
                                                                                                                       // consumers
@@ -84,6 +90,7 @@ public class OrderConsumer {
                     log.warn("Unknown event type: {}", event.getEventType());
             }
 
+            broadcastOrderUpdate(event);
             log.info("Successfully processed event: {}", event.getEventType());
 
         } catch (Exception e) {
@@ -114,8 +121,7 @@ public class OrderConsumer {
     private void handleOrderCreated(OrderEvent event) {
         log.info("Processing ORDER_CREATED for order ID: {}", event.getOrder().getId());
 
-        // Example: Send email notification
-        sendOrderConfirmationEmail(event.getOrder().getCustomerEmail(), event.getOrder().getId());
+        emailService.sendOrderConfirmationEmail(event.getOrder());
 
         // Example: Update inventory
         // inventoryService.reserveItems(event.getOrder());
@@ -138,10 +144,7 @@ public class OrderConsumer {
         log.info("Processing ORDER_UPDATED for order ID: {} - New status: {}", event.getOrder().getId(),
                 event.getOrder().getStatus());
 
-        // Example: Send status update email
-
-        sendOrderStatusUpdateEmail(event.getOrder().getCustomerEmail(), event.getOrder().getId(),
-                event.getOrder().getStatus().toString());
+        emailService.sendOrderStatusUpdateEmail(event.getOrder(), extractOldStatus(event.getMessage()));
 
         // Example: Update external systems
         // externalSystemService.syncOrderStatus(event.getOrder());
@@ -160,9 +163,7 @@ public class OrderConsumer {
     private void handleOrderCancelled(OrderEvent event) {
         log.info("Processing ORDER_CANCELLED for order ID: {}", event.getOrder().getId());
 
-        // Example: Send cancellation email
-
-        sendOrderCancellationEmail(event.getOrder().getCustomerEmail(), event.getOrder().getId());
+        emailService.sendOrderCancellationEmail(event.getOrder());
 
         // Example: Release inventory
         // inventoryService.releaseItems(event.getOrder());
@@ -171,39 +172,25 @@ public class OrderConsumer {
         // paymentService.initiateRefund(event.getOrder());
     }
 
-    /**
-     * Simulates sending order confirmation email.
-     * In production, integrate with email service (SendGrid, AWS SES, etc.)
-     * 
-     * @param email   customer email
-     * @param orderId order ID
-     */
-    private void sendOrderConfirmationEmail(String email, Long orderId) {
-        log.info("Sending order confirmation email to {} for order {}", email, orderId);
-        // Email service integration would go here
+    private String extractOldStatus(String message) {
+        if (message == null || message.isBlank()) {
+            return "UNKNOWN";
+        }
+        String marker = "from ";
+        String separator = " to ";
+        int start = message.indexOf(marker);
+        int end = message.indexOf(separator);
+        if (start == -1 || end == -1 || end <= start + marker.length()) {
+            return "UNKNOWN";
+        }
+        return message.substring(start + marker.length(), end).trim();
     }
 
-    /**
-     * Simulates sending order status update email.
-     * 
-     * @param email   customer email
-     * @param orderId order ID
-     * @param status  new order status
-     */
-    private void sendOrderStatusUpdateEmail(String email, Long orderId, String status) {
-        log.info("Sending status update email to {} for order {} - Status: {}", email, orderId, status);
-        // Email service integration would go here
-    }
-
-    /**
-     * Simulates sending order cancellation email.
-     * 
-     * @param email   customer email
-     * @param orderId order ID
-     */
-    private void sendOrderCancellationEmail(String email, Long orderId) {
-        log.info("Sending cancellation email to {} for order {}", email, orderId);
-        // Email service integration would go here
+    private void broadcastOrderUpdate(OrderEvent event) {
+        if (event.getOrder() == null) {
+            return;
+        }
+        webSocketNotificationService.notifyOrderUpdate(OrderResponse.fromEntity(event.getOrder()));
     }
 
 }
