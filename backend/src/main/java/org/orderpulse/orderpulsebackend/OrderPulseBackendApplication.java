@@ -3,7 +3,6 @@ package org.orderpulse.orderpulsebackend;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.kafka.annotation.EnableKafka;
 
 /**
@@ -17,11 +16,8 @@ import org.springframework.kafka.annotation.EnableKafka;
  *                         - @ComponentScan: Tells Spring to look for other
  *                         components in the same package
  *
- * @EnableJpaAuditing: Enables JPA Auditing which allows automatic population of
- *                     createdAt and updatedAt fields in our entities
  */
 @SpringBootApplication
-@EnableJpaAuditing
 @EnableKafka // Enables Kafka integration
 @EnableCaching // Enables Spring's caching abstraction
 public class OrderPulseBackendApplication {
