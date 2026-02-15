@@ -3,9 +3,12 @@ package org.orderpulse.orderpulsebackend.repository;
 import org.orderpulse.orderpulsebackend.entity.Order;
 import org.orderpulse.orderpulsebackend.entity.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -21,7 +24,7 @@ import java.util.List;
  * @version 1.0
  */
 @Repository
-public interface OrderRepository extends JpaRepository<Order, Long> {
+public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
 
     /**
      * Find all orders for a specific customer.
@@ -87,4 +90,36 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * @return true if at least one order exists, false otherwise
      */
     boolean existsByCustomerEmailAndStatus(String email, OrderStatus status);
+
+    /**
+     * Count all orders.
+     *
+     * @return total order count
+     */
+    @Query("SELECT COUNT(o) FROM Order o")
+    Long countTotalOrders();
+
+    /**
+     * Sum total revenue for all orders.
+     *
+     * @return total revenue
+     */
+    @Query("SELECT SUM(o.totalPrice) FROM Order o")
+    BigDecimal calculateTotalRevenue();
+
+    /**
+     * Count orders grouped by status.
+     *
+     * @return list of [OrderStatus, count]
+     */
+    @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
+    List<Object[]> countOrdersByStatus();
+
+    /**
+     * Sum revenue grouped by status.
+     *
+     * @return list of [OrderStatus, revenue]
+     */
+    @Query("SELECT o.status, SUM(o.totalPrice) FROM Order o GROUP BY o.status")
+    List<Object[]> calculateRevenueByStatus();
 }
